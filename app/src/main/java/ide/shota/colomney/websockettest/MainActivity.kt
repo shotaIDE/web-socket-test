@@ -16,54 +16,56 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import ide.shota.colomney.websockettest.ui.theme.WebSocketTestTheme
-import org.java_websocket.client.WebSocketClient
-import org.java_websocket.handshake.ServerHandshake
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import okio.ByteString
 import java.net.InetSocketAddress
 import java.net.Proxy
-import java.net.URI
-import java.security.cert.X509Certificate
-import javax.net.ssl.SSLContext
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
 
-class MyWebSocketClient :
-    WebSocketClient(URI("wss://demo.piesocket.com/v3/channel_123?api_key=VCXCEuvhGcBDP7XhiJJUDvR1e1D3eiVjgZ9VRiaV&notify_self")) {
+class WebSocketClient : WebSocketListener() {
+    private val webSocket: WebSocket
+
     init {
-        this.setProxy(
-            Proxy(
-                Proxy.Type.SOCKS,
-                InetSocketAddress("192.168.11.13", 8889)
+        val client = OkHttpClient.Builder()
+            .proxy(
+                Proxy(
+                    Proxy.Type.HTTP,
+                    InetSocketAddress("192.168.11.13", 8080)
+                )
             )
-        )
-
-        val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
-            override fun getAcceptedIssuers(): Array<X509Certificate>? = null
-            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) =
-                Unit
-
-            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) =
-                Unit
-        })
-        val socketFactory = SSLContext.getInstance("TLS").apply {
-            init(null, trustAllCerts, java.security.SecureRandom())
-        }.socketFactory
-        this.setSocketFactory(socketFactory)
+            .build()
+        val request = Request.Builder()
+            .url("wss://demo.piesocket.com/v3/channel_123?api_key=VCXCEuvhGcBDP7XhiJJUDvR1e1D3eiVjgZ9VRiaV&notify_self")
+            .build()
+        webSocket = client.newWebSocket(request, this)
     }
 
-    override fun onOpen(handshakedata: ServerHandshake?) {
-        println("opened connection")
+    override fun onOpen(webSocket: WebSocket, response: Response) {
+        println("WebSocket opened successfully")
     }
 
-    override fun onClose(code: Int, reason: String?, remote: Boolean) {
-        println("closed connection")
+    override fun onMessage(webSocket: WebSocket, text: String) {
+        println("Received text message: $text")
     }
 
-    override fun onMessage(message: String?) {
-        println("received: $message")
+    override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+        println("Received binary message: ${bytes.hex()}")
     }
 
-    override fun onError(ex: Exception?) {
-        println("error: ${ex?.message}")
+    override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+        webSocket.close(1000, null)
+        println("Connection closed: $code $reason")
+    }
+
+    override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+        println("Connection failed: ${t.localizedMessage}")
+    }
+
+    fun send(message: String) {
+        webSocket.send(message)
     }
 }
 
@@ -81,8 +83,8 @@ class MainActivity : ComponentActivity() {
                         )
                         Spacer(modifier = Modifier.padding(16.dp))
                         Button(onClick = {
-                            val webSocketClient = MyWebSocketClient()
-                            webSocketClient.connect()
+                            val webSocketClient = WebSocketClient()
+                            webSocketClient.send("Hello")
                         }) {
                             Text("Connect")
                         }
